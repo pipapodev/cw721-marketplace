@@ -33,11 +33,6 @@ pub enum ExecuteMsg {
         taker_fee: Uint64,
     },
     // Seller / token owner functions
-    CreateSale {
-        contract_address: String,
-        token_id: TokenId,
-        price: Coin,
-    },
     UpdateSale {
         contract_address: String,
         token_id: TokenId,

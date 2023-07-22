@@ -19,6 +19,9 @@ pub enum ContractError {
     #[error("CollectionNotExist")]
     CollectionNotExist {},
 
+    #[error("SaleDoesNotExist")]
+    SaleDoesNotExist {},
+
     #[error("DenomNotSupported")]
     DenomNotSupported {},
 
