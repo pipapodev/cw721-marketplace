@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
@@ -11,6 +11,7 @@ use self::execute::{
     admin_remove_sale, buy, register_collection, remove_sale, update_collection, update_ownership,
     update_sale, update_taker_fee,
 };
+use self::query::{get_collection, get_sale, get_taker_fee};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw721-marketplace";
@@ -103,8 +104,19 @@ pub fn execute(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, _msg: QueryMsg) -> StdResult<Binary> {
-    unimplemented!()
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::GetSale {
+            contract_address,
+            token_id,
+        } => to_binary(&get_sale(deps, contract_address, token_id)?),
+        QueryMsg::GetSales { start, limit } => todo!(),
+        QueryMsg::GetCollection { contract_address } => {
+            to_binary(&get_collection(deps, contract_address)?)
+        }
+        QueryMsg::GetCollections { start, limit } => todo!(),
+        QueryMsg::GetTakerFee {} => to_binary(&get_taker_fee(deps)?),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -445,5 +457,41 @@ pub mod execute {
     }
 }
 
+pub mod query {
+    use cosmwasm_std::{Deps, StdResult, Uint64};
+
+    use crate::{
+        msg::{CollectionsInfo, SalesInfo, TakerFeeInfo},
+        state::{COLLECTIONS, SALES, TAKERFEE},
+    };
+
+    pub fn get_sale(
+        deps: Deps,
+        contract_address: String,
+        token_id: String,
+    ) -> StdResult<SalesInfo> {
+        let contract_address = deps.api.addr_validate(&contract_address)?;
+        let sale = SALES.load(deps.storage, (contract_address, token_id))?;
+
+        Ok(SalesInfo { sales: vec![sale] })
+    }
+
+    pub fn get_collection(deps: Deps, contract_address: String) -> StdResult<CollectionsInfo> {
+        let contract_address = deps.api.addr_validate(&contract_address)?;
+        let collection = COLLECTIONS.load(deps.storage, contract_address)?;
+
+        Ok(CollectionsInfo {
+            collections: vec![collection],
+        })
+    }
+
+    pub fn get_taker_fee(deps: Deps) -> StdResult<TakerFeeInfo> {
+        let taker_fee = TAKERFEE.load(deps.storage)?;
+
+        Ok(TakerFeeInfo {
+            taker_fee: Uint64::from(taker_fee),
+        })
+    }
+}
 #[cfg(test)]
 mod tests {}

@@ -84,15 +84,15 @@ pub enum MigrateMsg {}
 
 #[cw_serde]
 pub struct SalesInfo {
-    sales: Vec<Sale>,
+    pub sales: Vec<Sale>,
 }
 
 #[cw_serde]
 pub struct CollectionsInfo {
-    collections: Vec<Collection>,
+    pub collections: Vec<Collection>,
 }
 
 #[cw_serde]
 pub struct TakerFeeInfo {
-    taker_fee: Uint64,
+    pub taker_fee: Uint64,
 }
