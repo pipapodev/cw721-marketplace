@@ -25,6 +25,9 @@ pub enum ContractError {
     #[error("DenomNotSupported")]
     DenomNotSupported {},
 
+    #[error("InsufficientFunds")]
+    InsufficientFunds {},
+
     #[error(transparent)]
     Ownership(#[from] OwnershipError),
 }

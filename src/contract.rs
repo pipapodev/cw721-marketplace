@@ -5,11 +5,11 @@ use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::{NATIVE_DENOM, TAKERFEE};
+use crate::state::{NATIVE_DENOM, TAKERADDRESS, TAKERFEE};
 
 use self::execute::{
-    admin_remove_sale, register_collection, remove_sale, update_collection, update_sale,
-    update_taker_fee,
+    admin_remove_sale, buy, register_collection, remove_sale, update_collection, update_ownership,
+    update_sale, update_taker_fee,
 };
 
 // version info for migration info
@@ -26,6 +26,10 @@ pub fn instantiate(
     cw_ownable::initialize_owner(deps.storage, deps.api, Some(&info.sender.to_string()))?;
     TAKERFEE.save(deps.storage, &msg.taker_fee.u64())?;
     NATIVE_DENOM.save(deps.storage, &msg.native_denom)?;
+    TAKERADDRESS.save(
+        deps.storage,
+        &deps.api.addr_validate(&msg.taker_address).unwrap(),
+    )?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     Ok(Response::new()
@@ -80,19 +84,21 @@ pub fn execute(
             token_id,
         } => remove_sale(deps, info, contract_address, token_id),
         ExecuteMsg::AcceptCollectionOffer {
-            contract_address,
-            token_id,
+            contract_address: _,
+            token_id: _,
         } => todo!(),
         ExecuteMsg::Buy {
             contract_address,
             token_id,
-        } => todo!(),
+        } => buy(deps, info, contract_address, token_id),
         ExecuteMsg::CreateCollectionOffer {
-            contract_address,
-            price,
+            contract_address: _,
+            price: _,
         } => todo!(),
-        ExecuteMsg::RemoveCollectionOffer { contract_address } => todo!(),
-        ExecuteMsg::UpdateOwnership(_) => todo!(),
+        ExecuteMsg::RemoveCollectionOffer {
+            contract_address: _,
+        } => todo!(),
+        ExecuteMsg::UpdateOwnership(action) => update_ownership(deps, env, info, action),
     }
 }
 
@@ -111,11 +117,14 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 pub mod execute {
     use std::marker::PhantomData;
 
-    use cosmwasm_std::{Addr, Coin, DepsMut, Empty, Env, Event, MessageInfo, Response, Uint64};
-    use cw721_rewards::helpers::Cw721Contract;
+    use cosmwasm_std::{
+        coins, BankMsg, Coin, CosmosMsg, Decimal, DepsMut, Empty, Env, Event, MessageInfo,
+        Response, Uint128, Uint64,
+    };
+    use cw721_rewards::{helpers::Cw721Contract, ExecuteMsg};
 
     use crate::{
-        state::{Collection, Sale, COLLECTIONS, NATIVE_DENOM, SALES, TAKERFEE},
+        state::{Collection, Sale, COLLECTIONS, NATIVE_DENOM, SALES, TAKERADDRESS, TAKERFEE},
         ContractError,
     };
 
@@ -347,6 +356,92 @@ pub mod execute {
                 .add_attribute("contract_address", contract_address.to_string())
                 .add_attribute("token_id", token_id),
         ))
+    }
+
+    pub fn buy(
+        deps: DepsMut,
+        info: MessageInfo,
+        contract_address: String,
+        token_id: String,
+    ) -> Result<Response, ContractError> {
+        let contract_address = deps.api.addr_validate(&contract_address)?;
+        let sale = SALES.load(deps.storage, (contract_address.clone(), token_id.clone()))?;
+
+        let fund_input = cw_utils::must_pay(&info, &sale.price.denom).unwrap();
+
+        if fund_input != sale.price.amount {
+            return Err(ContractError::InsufficientFunds {});
+        }
+
+        SALES.remove(deps.storage, (contract_address.clone(), token_id.clone()));
+
+        let taker_fee = TAKERFEE.load(deps.storage)?;
+        let taker_funds = fund_input * Decimal::percent(taker_fee);
+
+        let mut messages: Vec<CosmosMsg> = Vec::new();
+
+        if taker_funds.u128() > 0 {
+            let send_taker_funds_msg = BankMsg::Send {
+                to_address: TAKERADDRESS.load(deps.storage).unwrap().to_string(),
+                amount: coins(taker_funds.u128(), &sale.price.denom),
+            };
+
+            messages.push(send_taker_funds_msg.into());
+        }
+
+        // royalties
+
+        let collection = COLLECTIONS.load(deps.storage, contract_address.clone())?;
+
+        let mut royalty_funds = Uint128::from(0u128);
+
+        if let Some(royalty_percentage) = collection.royalty_percentage {
+            if let Some(royalty_payment_address) = collection.royalty_payment_address {
+                royalty_funds = fund_input * Decimal::percent(royalty_percentage);
+                if royalty_funds.u128() > 0 {
+                    let send_royalty_funds_msg = BankMsg::Send {
+                        to_address: royalty_payment_address.to_string(),
+                        amount: coins(royalty_funds.u128(), &sale.price.denom),
+                    };
+
+                    messages.push(send_royalty_funds_msg.into());
+                }
+            }
+        }
+
+        let owner_funds = fund_input - taker_funds - royalty_funds;
+        if owner_funds.u128() > 0 {
+            let send_owner_funds_msg = BankMsg::Send {
+                to_address: sale.owner_address.to_string(),
+                amount: coins(owner_funds.u128(), &sale.price.denom),
+            };
+
+            messages.push(send_owner_funds_msg.into());
+        }
+
+        messages.push(
+            Cw721Contract::<Empty, Empty>(contract_address.clone(), PhantomData, PhantomData)
+                .call(ExecuteMsg::<Empty>::TransferNft {
+                    recipient: info.sender.to_string(),
+                    token_id: token_id.clone(),
+                })?,
+        );
+
+        Ok(Response::new().add_messages(messages).add_event(
+            Event::new("buy")
+                .add_attribute("contract_address", contract_address)
+                .add_attribute("token_id", token_id),
+        ))
+    }
+
+    pub fn update_ownership(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+        action: cw_ownable::Action,
+    ) -> Result<Response, ContractError> {
+        let ownership = cw_ownable::update_ownership(deps, &env.block, &info.sender, action)?;
+        Ok(Response::new().add_attributes(ownership.into_attributes()))
     }
 }
 
