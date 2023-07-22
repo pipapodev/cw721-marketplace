@@ -5,7 +5,7 @@ use cw_storage_plus::{Item, Map};
 #[cw_serde]
 pub struct Collection {
     pub royalty_percentage: Option<u64>,
-    pub royalty_payment_address: Option<String>,
+    pub royalty_payment_address: Option<Addr>,
     pub is_paused: bool,
 }
 
@@ -23,6 +23,7 @@ pub struct Offer {
 pub type TokenId = String;
 
 pub const TAKERFEE: Item<u64> = Item::new("taker_fee");
+pub const NATIVE_DENOM: Item<String> = Item::new("native_denom");
 pub const COLLECTIONS: Map<Addr, Collection> = Map::new("collections");
 pub const SALES: Map<(Addr, TokenId), Sale> = Map::new("sales");
 pub const COLLECTION_OFFERS: Map<(Addr, Addr), Offer> = Map::new("collection_offers");

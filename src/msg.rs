@@ -7,6 +7,7 @@ use crate::state::{Collection, Sale, TokenId};
 #[cw_serde]
 pub struct InstantiateMsg {
     pub taker_fee: Uint64,
+    pub native_denom: String,
 }
 
 #[cw_ownable_execute]
@@ -81,6 +82,9 @@ pub enum QueryMsg {
     #[returns(TakerFeeInfo)]
     GetTakerFee {},
 }
+
+#[cw_serde]
+pub enum MigrateMsg {}
 
 #[cw_serde]
 pub struct SalesInfo {
