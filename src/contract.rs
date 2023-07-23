@@ -442,7 +442,10 @@ pub mod execute {
         Ok(Response::new().add_messages(messages).add_event(
             Event::new("buy")
                 .add_attribute("contract_address", contract_address)
-                .add_attribute("token_id", token_id),
+                .add_attribute("token_id", token_id)
+                .add_attribute("price", sale.price.amount)
+                .add_attribute("from", sale.owner_address)
+                .add_attribute("to", info.sender.to_string()),
         ))
     }
 

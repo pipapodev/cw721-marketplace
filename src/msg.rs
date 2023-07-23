@@ -80,7 +80,9 @@ pub enum QueryMsg {
 }
 
 #[cw_serde]
-pub enum MigrateMsg {}
+pub enum MigrateMsg {
+    Migrate {},
+}
 
 #[cw_serde]
 pub struct SalesInfo {
