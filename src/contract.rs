@@ -381,7 +381,7 @@ pub mod execute {
 
         let fund_input = cw_utils::must_pay(&info, &sale.price.denom).unwrap();
 
-        if fund_input != sale.price.amount {
+        if fund_input < sale.price.amount {
             return Err(ContractError::InsufficientFunds {});
         }
 
