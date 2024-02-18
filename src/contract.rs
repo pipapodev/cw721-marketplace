@@ -157,6 +157,12 @@ pub mod execute {
             return Err(ContractError::CollectionAlreadyRegistered {});
         }
 
+        if royalty_percentage.is_some() {
+            let percentage = royalty_percentage.unwrap();
+
+            assert!(percentage <= 90, "Royalty is higher than 90%");
+        }
+
         COLLECTIONS.save(
             deps.storage,
             contract_address.clone(),
